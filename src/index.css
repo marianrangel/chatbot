@@ -1,13 +1,151 @@
-body {
+/* Reset básico para garantir consistência entre navegadores */
+* {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+html, body {
+  height: 100%;
+  font-family: 'Poppins', sans-serif; /* Fonte moderna e elegante */
+  background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fbc2eb, #a18cd1); /* Gradiente multicolorido */
+  background-size: 300% 300%; /* Para animação do gradiente */
+  animation: gradientAnimation 10s ease infinite; /* Animação do gradiente */
+  color: #333; /* Cor padrão do texto */
+  overflow-x: hidden;
+}
+
+@keyframes gradientAnimation {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  padding: 12px 25px;
+  border: none;
+  border-radius: 30px;
+  background: linear-gradient(135deg, #6a11cb, #2575fc); /* Gradiente vibrante */
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+}
+
+button:hover {
+  transform: scale(1.1); /* Aumenta levemente ao passar o mouse */
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); /* Adiciona uma sombra */
+  background: linear-gradient(135deg, #2575fc, #6a11cb); /* Inverte o gradiente */
+}
+
+button:active {
+  transform: scale(0.95); /* Reduz levemente ao clicar */
+}
+
+input, textarea {
+  font-family: inherit;
+  border: 2px solid #ddd;
+  border-radius: 15px;
+  padding: 12px;
+  font-size: 16px;
+  width: 100%;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  background: rgba(255, 255, 255, 0.9); /* Fundo translúcido */
+}
+
+input:focus, textarea:focus {
+  border-color: #6a11cb; /* Cor vibrante ao focar */
+  box-shadow: 0 4px 15px rgba(106, 17, 203, 0.3); /* Sombra ao focar */
+  outline: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: bold;
+  color: #6a11cb; /* Roxo vibrante para títulos */
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1); /* Sombra sutil */
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
+  background-attachment: fixed; /* Mantém o gradiente fixo ao rolar */
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #6a11cb, #2575fc); /* Gradiente vibrante */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #2575fc, #6a11cb); /* Inverte o gradiente ao passar o mouse */
+}
+
+.response-container {
+  background: rgba(255, 255, 255, 0.85); /* Fundo translúcido */
+  padding: 25px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); /* Sombra elegante */
+  animation: fadeIn 1s ease; /* Animação de entrada */
+  backdrop-filter: blur(10px); /* Efeito de desfoque no fundo */
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.response-container h2 {
+  color: #2575fc; /* Azul vibrante */
+  font-size: 22px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.response-container p {
+  color: #555;
+  font-size: 18px;
+  line-height: 1.8;
+  text-align: justify;
+}
+
+.response-container p::before {
+  content: "💡 "; /* Adiciona um ícone antes do texto */
+  font-size: 20px;
+}
+
+.card {
+  background: linear-gradient(135deg, #ffecd2, #fcb69f); /* Gradiente suave */
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15); /* Sombra elegante */
+  transition: transform 0.3s;
+}
+
+.card:hover {
+  transform: translateY(-10px); /* Eleva o card ao passar o mouse */
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2); /* Sombra mais intensa */
 }
