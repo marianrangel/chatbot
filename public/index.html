@@ -3,13 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chatbot de Autocuidado</title>
-    <link rel="stylesheet" href="%PUBLIC_URL%/styles/App.css">
+    <title>Chatbot com Histórico</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; background-color: #f0f0f0; }
+        .container { display: flex; gap: 20px; width: 90%; max-width: 1200px; margin-top: 20px; }
+        .chat-wrapper, .historico-wrapper { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .chat-wrapper { flex: 2; display: flex; flex-direction: column; height: 90vh; }
+        .historico-wrapper { flex: 1; height: 90vh; overflow-y: auto; }
+        #chat-container { flex-grow: 1; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+        .mensagem { margin: 5px 0; padding: 8px 12px; border-radius: 15px; max-width: 80%; }
+        .usuario { background-color: #dcf8c6; align-self: flex-end; text-align: right; }
+        .bot { background-color: #f1f0f0; align-self: flex-start; }
+        #input-container { display: flex; }
+        #userInput { flex-grow: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc; }
+        #sendButton { padding: 10px 15px; margin-left: 10px; }
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        #lista-sessoes { list-style: none; padding: 0; }
+        #lista-sessoes li { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; transition: background-color 0.2s; }
+        #lista-sessoes li:hover { background-color: #f9f9f9; }
+        #lista-sessoes li.active { background-color: #e0eafc; font-weight: bold; }
+        #visualizacao-conversa-detalhada { margin-top: 20px; padding: 10px; background-color: #fafafa; border-radius: 5px; }
+    </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script src="%PUBLIC_URL%/index.js"></script>
-    
-  
+
+    <div class="container">
+        <!-- Coluna do Chat Principal -->
+        <div class="chat-wrapper">
+            <h1>Chatbot Principal</h1>
+            <div id="chat-container"></div>
+            <div id="input-container">
+                <input type="text" id="userInput" placeholder="Digite sua mensagem...">
+                <button id="sendButton">Enviar</button>
+            </div>
+        </div>
+
+        <!-- Coluna do Histórico de Conversas -->
+        <div class="historico-wrapper">
+            <section id="historico-container">
+                <h2>Histórico de Conversas</h2>
+                <ul id="lista-sessoes">
+                    <!-- A lista de sessões será populada aqui via JS -->
+                    <p>Carregando histórico...</p>
+                </ul>
+                <div id="visualizacao-conversa-detalhada">
+                    <!-- O conteúdo de uma conversa selecionada aparecerá aqui -->
+                    <p>Selecione uma sessão ao lado para ver os detalhes.</p>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="cliente.js"></script>
 </body>
 </html>

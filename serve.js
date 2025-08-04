@@ -1,9 +1,13 @@
-// server.js
+// server.js - Atualizado com funcionalidade de histórico
 const express = require('express');
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const dotenv = require('dotenv');
 const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
+
+// Importar o modelo SessaoChat (certifique-se de que o arquivo existe)
+// const SessaoChat = require('./models/SessaoChat');
 
 dotenv.config();
 
@@ -12,23 +16,24 @@ const PORT = process.env.PORT || 3004;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Conexões com MongoDB Atlas - Múltiplos bancos
-const mongoUriLogs = process.env.MONGO_URI_LOGS || process.env.MONGO_URI; // Fallback para compatibilidade
+// Conexões com MongoDB Atlas
+const mongoUriLogs = process.env.MONGO_URI_LOGS || process.env.MONGO_URI;
 const mongoUriHistoria = process.env.MONGO_URI_HISTORIA;
 
 let dbLogs;
 let dbHistoria;
 
+// Função para conectar ao MongoDB
 async function connectToMongoDB(uri, dbName, description) {
   if (!uri) {
-    console.error(`URI do MongoDB para ${description} não definida!`);
+    console.error(`❌ URI do MongoDB para ${description} não definida.`);
     return null;
   }
-  
+
   try {
-    const client = new MongoClient(uri, { 
-      useNewUrlParser: true, 
-      useUnifiedTopology: true 
+    const client = new MongoClient(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
     });
     await client.connect();
     console.log(`✅ Conectado ao MongoDB Atlas: ${description}`);
@@ -39,38 +44,22 @@ async function connectToMongoDB(uri, dbName, description) {
   }
 }
 
+// Inicializa os dois bancos
 async function initializeDatabases() {
-  // Conecta ao banco de logs (compartilhado)
-  dbLogs = await connectToMongoDB(
-    mongoUriLogs, 
-    "IIW2023A_Logs", 
-    "Logs (Compartilhado)"
-  );
-  
-  // Conecta ao banco de histórico (individual)
-  dbHistoria = await connectToMongoDB(
-    mongoUriHistoria, 
-    "chatbotHistoriaDB", 
-    "Histórico de Chat (Individual)"
-  );
-  
-  if (!dbLogs) {
-    console.warn("⚠️  Banco de logs não conectado. Funcionalidade de log pode não funcionar.");
-  }
-  
-  if (!dbHistoria) {
-    console.warn("⚠️  Banco de histórico não conectado. Funcionalidade de histórico pode não funcionar.");
-  }
+  dbLogs = await connectToMongoDB(mongoUriLogs, "IIW2023A_Logs", "Logs (Compartilhado)");
+  dbHistoria = await connectToMongoDB(mongoUriHistoria, "chatbotHistoriaDB", "Histórico de Chat (Individual)");
+
+  if (!dbLogs) console.warn("⚠️ Banco de logs não conectado.");
+  if (!dbHistoria) console.warn("⚠️ Banco de histórico não conectado.");
 }
 
-// Inicializar conexões com os bancos
 initializeDatabases();
 
-// Serve arquivos estáticos (HTML, JS, CSS)
+// Configuração do Express
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Endpoint do chat
+// Endpoint principal do chatbot (POST /chat)
 app.post('/chat', async (req, res) => {
   const mensagemUsuario = req.body.mensagem;
   const historicoRecebido = req.body.historico || [];
@@ -107,41 +96,7 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// Endpoint para registrar log de acesso do usuário (banco compartilhado)
-app.post('/api/log-connection', async (req, res) => {
-  if (!dbLogs) {
-    return res.status(500).json({ error: 'Servidor não conectado ao banco de dados de logs.' });
-  }
-
-  const { ip, acao, nomeBot } = req.body;
-  if (!ip || !acao || !nomeBot) {
-    return res.status(400).json({ error: 'Dados de log incompletos (IP, ação e nomeBot são obrigatórios).' });
-  }
-
-  const agora = new Date();
-  const dataFormatada = agora.toISOString().split('T')[0]; // YYYY-MM-DD
-  const horaFormatada = agora.toTimeString().split(' ')[0]; // HH:MM:SS
-  
-  const logEntry = {
-    col_data: dataFormatada,
-    col_hora: horaFormatada,
-    col_IP: ip,
-    col_nome_bot: nomeBot,
-    col_acao: acao
-  };
-
-  try {
-    const collection = dbLogs.collection('tb_cl_user_log_acess');
-    await collection.insertOne(logEntry);
-    console.log(`📊 Log registrado: ${acao} - ${nomeBot} - ${ip}`);
-    res.status(201).json({ message: 'Log registrado com sucesso!' });
-  } catch (err) {
-    console.error('Erro ao registrar log:', err);
-    res.status(500).json({ error: 'Erro ao registrar log.' });
-  }
-});
-
-// NOVO: Endpoint para salvar histórico completo do chat (banco individual)
+// Salvar histórico do chat (POST /api/chat/salvar-historico)
 app.post('/api/chat/salvar-historico', async (req, res) => {
   if (!dbHistoria) {
     return res.status(500).json({ error: "Servidor não conectado ao banco de dados de histórico." });
@@ -150,44 +105,215 @@ app.post('/api/chat/salvar-historico', async (req, res) => {
   try {
     const { sessionId, userId, botId, startTime, endTime, messages } = req.body;
 
-    // Validação dos dados obrigatórios
-    if (!sessionId || !botId || !messages || !Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ 
-        error: "Dados incompletos para salvar histórico (sessionId, botId, messages são obrigatórios)." 
-      });
+    if (!sessionId || !botId || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "Dados obrigatórios faltando para salvar histórico." });
     }
 
     const novaSessao = {
       sessionId,
       userId: userId || 'anonimo',
       botId,
-      startTime: startTime ? new Date(startTime) : new Date(),
-      endTime: endTime ? new Date(endTime) : new Date(),
-      messages, // O array completo de histórico do chat
+      startTime: new Date(startTime || Date.now()),
+      endTime: new Date(endTime || Date.now()),
+      messages,
       totalMessages: messages.length,
       loggedAt: new Date()
     };
 
     const collection = dbHistoria.collection("sessoesChat");
-    const result = await collection.insertOne(novaSessao);
+    await collection.insertOne(novaSessao);
 
-    console.log(`💾 Histórico de sessão salvo: ${sessionId} (${messages.length} mensagens)`);
-    res.status(201).json({ 
-      message: "Histórico de chat salvo com sucesso!", 
-      sessionId: novaSessao.sessionId,
-      totalMessages: messages.length
-    });
-
+    console.log(`💾 Histórico salvo: ${sessionId}`);
+    res.status(201).json({ message: "Histórico salvo com sucesso.", sessionId });
   } catch (error) {
-    console.error("[Servidor] Erro em /api/chat/salvar-historico:", error.message);
-    res.status(500).json({ error: "Erro interno ao salvar histórico de chat." });
+    console.error("Erro ao salvar histórico:", error.message);
+    res.status(500).json({ error: "Erro ao salvar histórico." });
   }
 });
 
-// NOVO: Endpoint para consultar histórico de sessões (opcional)
+// NOVO ENDPOINT: Buscar lista de históricos de conversas (GET /api/chat/historicos)
+app.get('/api/chat/historicos', async (req, res) => {
+  if (!dbHistoria) {
+    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
+  }
+
+  try {
+    const { 
+      page = 1, 
+      limit = 10, 
+      botId, 
+      userId,
+      sortBy = 'startTime',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sortDirection = sortOrder === 'desc' ? -1 : 1;
+
+    // Construir filtros dinâmicos
+    const filtros = {};
+    if (botId) filtros.botId = botId;
+    if (userId) filtros.userId = userId;
+
+    const collection = dbHistoria.collection("sessoesChat");
+    
+    // Buscar sessões com paginação
+    const sessoes = await collection.find(filtros)
+      .sort({ [sortBy]: sortDirection })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .project({ 
+        sessionId: 1,
+        botId: 1,
+        userId: 1,
+        startTime: 1,
+        endTime: 1,
+        totalMessages: 1,
+        loggedAt: 1,
+        // Não incluir o array completo de mensagens na listagem para melhor performance
+        'messages.0': 1, // Apenas a primeira mensagem para prévia
+        'messages.-1': 1 // Apenas a última mensagem para prévia
+      })
+      .toArray();
+
+    // Contar total para paginação
+    const totalSessoes = await collection.countDocuments(filtros);
+    const totalPaginas = Math.ceil(totalSessoes / parseInt(limit));
+
+    // Enriquecer dados para exibição
+    const sessoesEnriquecidas = sessoes.map(sessao => {
+      const duracao = new Date(sessao.endTime) - new Date(sessao.startTime);
+      const duracaoMinutos = Math.round(duracao / (1000 * 60));
+      
+      return {
+        ...sessao,
+        duracaoMinutos,
+        preview: {
+          primeiraMensagem: sessao.messages?.[0]?.parts?.[0]?.text?.substring(0, 100) + '...' || 'Sem mensagens',
+          ultimaMensagem: sessao.messages?.[sessao.messages.length - 1]?.parts?.[0]?.text?.substring(0, 100) + '...' || 'Sem mensagens'
+        }
+      };
+    });
+
+    res.json({
+      sessoes: sessoesEnriquecidas,
+      paginacao: {
+        paginaAtual: parseInt(page),
+        totalPaginas,
+        totalSessoes,
+        itensPorPagina: parseInt(limit),
+        temProxima: parseInt(page) < totalPaginas,
+        temAnterior: parseInt(page) > 1
+      }
+    });
+
+  } catch (error) {
+    console.error("Erro ao buscar históricos:", error.message);
+    res.status(500).json({ error: "Erro ao consultar históricos." });
+  }
+});
+
+// NOVO ENDPOINT: Buscar conversa específica por sessionId (GET /api/chat/historicos/:sessionId)
+app.get('/api/chat/historicos/:sessionId', async (req, res) => {
+  if (!dbHistoria) {
+    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
+  }
+
+  try {
+    const { sessionId } = req.params;
+    const collection = dbHistoria.collection("sessoesChat");
+
+    const sessao = await collection.findOne({ sessionId });
+    
+    if (!sessao) {
+      return res.status(404).json({ error: "Sessão não encontrada." });
+    }
+
+    // Calcular estatísticas da conversa
+    const duracao = new Date(sessao.endTime) - new Date(sessao.startTime);
+    const duracaoMinutos = Math.round(duracao / (1000 * 60));
+    const mensagensUsuario = sessao.messages.filter(m => m.role === 'user').length;
+    const mensagensBot = sessao.messages.filter(m => m.role === 'model').length;
+
+    const sessaoCompleta = {
+      ...sessao,
+      estatisticas: {
+        duracaoMinutos,
+        totalMensagens: sessao.totalMessages,
+        mensagensUsuario,
+        mensagensBot,
+        dataFormatada: new Date(sessao.startTime).toLocaleString('pt-BR'),
+        dataFimFormatada: new Date(sessao.endTime).toLocaleString('pt-BR')
+      }
+    };
+
+    res.json(sessaoCompleta);
+
+  } catch (error) {
+    console.error("Erro ao buscar sessão específica:", error.message);
+    res.status(500).json({ error: "Erro ao consultar sessão." });
+  }
+});
+
+// NOVO ENDPOINT: Buscar estatísticas gerais dos históricos (GET /api/chat/estatisticas)
+app.get('/api/chat/estatisticas', async (req, res) => {
+  if (!dbHistoria) {
+    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
+  }
+
+  try {
+    const collection = dbHistoria.collection("sessoesChat");
+
+    // Agregação para estatísticas
+    const estatisticas = await collection.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalSessoes: { $sum: 1 },
+          totalMensagens: { $sum: "$totalMessages" },
+          mediaMensagensPorSessao: { $avg: "$totalMessages" },
+          primeiraSessao: { $min: "$startTime" },
+          ultimaSessao: { $max: "$startTime" }
+        }
+      }
+    ]).toArray();
+
+    // Estatísticas por bot
+    const estatisticasPorBot = await collection.aggregate([
+      {
+        $group: {
+          _id: "$botId",
+          totalSessoes: { $sum: 1 },
+          totalMensagens: { $sum: "$totalMessages" },
+          mediaMensagens: { $avg: "$totalMessages" }
+        }
+      },
+      { $sort: { totalSessoes: -1 } }
+    ]).toArray();
+
+    const resultado = {
+      geral: estatisticas[0] || {
+        totalSessoes: 0,
+        totalMensagens: 0,
+        mediaMensagensPorSessao: 0,
+        primeiraSessao: null,
+        ultimaSessao: null
+      },
+      porBot: estatisticasPorBot
+    };
+
+    res.json(resultado);
+
+  } catch (error) {
+    console.error("Erro ao buscar estatísticas:", error.message);
+    res.status(500).json({ error: "Erro ao consultar estatísticas." });
+  }
+});
+
+// Consultar histórico de sessões (GET /api/chat/historico ou /:sessionId) - MANTIDO PARA COMPATIBILIDADE
 app.get('/api/chat/historico/:sessionId?', async (req, res) => {
   if (!dbHistoria) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de dados de histórico." });
+    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
   }
 
   try {
@@ -195,119 +321,113 @@ app.get('/api/chat/historico/:sessionId?', async (req, res) => {
     const collection = dbHistoria.collection("sessoesChat");
 
     if (sessionId) {
-      // Buscar sessão específica
       const sessao = await collection.findOne({ sessionId });
-      if (!sessao) {
-        return res.status(404).json({ error: "Sessão não encontrada." });
-      }
-      res.json(sessao);
-    } else {
-      // Listar últimas 10 sessões
-      const sessoes = await collection
-        .find({})
-        .sort({ loggedAt: -1 })
-        .limit(10)
-        .toArray();
-      res.json(sessoes);
+      if (!sessao) return res.status(404).json({ error: "Sessão não encontrada." });
+      return res.json(sessao);
     }
 
+    const sessoes = await collection.find({})
+      .sort({ loggedAt: -1 })
+      .limit(10)
+      .toArray();
+
+    res.json(sessoes);
   } catch (error) {
-    console.error("[Servidor] Erro ao consultar histórico:", error.message);
-    res.status(500).json({ error: "Erro interno ao consultar histórico." });
+    console.error("Erro ao buscar histórico:", error.message);
+    res.status(500).json({ error: "Erro ao consultar histórico." });
   }
 });
 
-// Simulação de ranking de bots
+// Log de acesso (POST /api/log-connection)
+app.post('/api/log-connection', async (req, res) => {
+  if (!dbLogs) {
+    return res.status(500).json({ error: "Servidor não conectado ao banco de logs." });
+  }
+
+  const { ip, acao, nomeBot } = req.body;
+  const agora = new Date();
+
+  const log = {
+    col_data: agora.toISOString().split('T')[0],
+    col_hora: agora.toTimeString().split(' ')[0],
+    col_IP: ip,
+    col_nome_bot: nomeBot,
+    col_acao: acao
+  };
+
+  try {
+    await dbLogs.collection("tb_cl_user_log_acess").insertOne(log);
+    res.status(201).json({ message: "Log registrado." });
+  } catch (error) {
+    console.error("Erro ao registrar log:", error.message);
+    res.status(500).json({ error: "Erro ao registrar log." });
+  }
+});
+
+// Ranking de bots (em memória)
 let dadosRankingVitrine = [];
 
-// Endpoint para registrar acesso ao bot para ranking
 app.post('/api/ranking/registrar-acesso-bot', (req, res) => {
   const { botId, nomeBot, timestampAcesso, usuarioId } = req.body;
-  if (!botId || !nomeBot) {
-    return res.status(400).json({ error: 'ID e Nome do Bot são obrigatórios para o ranking.' });
-  }
-  
+
   const acesso = {
     botId,
     nomeBot,
     usuarioId: usuarioId || 'anonimo',
-    acessoEm: timestampAcesso ? new Date(timestampAcesso) : new Date(),
+    acessoEm: new Date(timestampAcesso || Date.now()),
     contagem: 1
   };
-  
-  const botExistente = dadosRankingVitrine.find(b => b.botId === botId);
-  if (botExistente) {
-    botExistente.contagem += 1;
-    botExistente.ultimoAcesso = acesso.acessoEm;
+
+  const existente = dadosRankingVitrine.find(b => b.botId === botId);
+  if (existente) {
+    existente.contagem++;
+    existente.ultimoAcesso = acesso.acessoEm;
   } else {
     dadosRankingVitrine.push({
-      botId: botId,
-      nomeBot: nomeBot,
-      contagem: 1,
+      ...acesso,
       ultimoAcesso: acesso.acessoEm
     });
   }
-  
-  console.log('[Servidor] Dados de ranking atualizados:', dadosRankingVitrine);
-  res.status(201).json({ message: `Acesso ao bot ${nomeBot} registrado para ranking.` });
+
+  res.status(201).json({ message: "Acesso ao bot registrado." });
 });
 
-// Endpoint para visualizar ranking
 app.get('/api/ranking/visualizar', (req, res) => {
-  const rankingOrdenado = [...dadosRankingVitrine].sort((a, b) => b.contagem - a.contagem);
-  res.json(rankingOrdenado);
+  const ordenado = [...dadosRankingVitrine].sort((a, b) => b.contagem - a.contagem);
+  res.json(ordenado);
 });
 
-// Endpoint de status (para verificar conectividade)
+// Verificar status da API e dos bancos
 app.get('/api/status', (req, res) => {
   res.json({
-    status: 'online',
+    status: "online",
     timestamp: new Date().toISOString(),
     databases: {
-      logs: dbLogs ? 'conectado' : 'desconectado',
-      historico: dbHistoria ? 'conectado' : 'desconectado'
+      logs: dbLogs ? "conectado" : "desconectado",
+      historico: dbHistoria ? "conectado" : "desconectado"
     }
   });
 });
 
-// Função para iniciar o servidor com tratamento de erro de porta
+// Iniciar servidor com tratamento de porta em uso
 function startServer() {
   const server = app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-    console.log(`📊 Status dos bancos:`);
-    console.log(`   - Logs: ${dbLogs ? '✅ Conectado' : '❌ Desconectado'}`);
-    console.log(`   - Histórico: ${dbHistoria ? '✅ Conectado' : '❌ Desconectado'}`);
+    console.log(`📋 Endpoints disponíveis:`);
+    console.log(`   GET  /api/chat/historicos - Lista paginada de sessões`);
+    console.log(`   GET  /api/chat/historicos/:sessionId - Sessão específica`);
+    console.log(`   GET  /api/chat/estatisticas - Estatísticas gerais`);
+    console.log(`   POST /chat - Enviar mensagem ao chatbot`);
+    console.log(`   POST /api/chat/salvar-historico - Salvar histórico`);
   });
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`❌ Porta ${PORT} já está em uso!`);
-      console.log('💡 Soluções possíveis:');
-      console.log(`   1. Use uma porta diferente: PORT=3005 npm start`);
-      console.log(`   2. Finalize o processo que está usando a porta ${PORT}`);
-      console.log(`   3. No Windows: netstat -ano | findstr :${PORT}`);
-      console.log(`   4. No Linux/Mac: lsof -ti:${PORT} | xargs kill -9`);
-      
-      // Tenta uma porta alternativa automaticamente
-      const alternativePort = PORT + 1;
-      console.log(`🔄 Tentando porta alternativa: ${alternativePort}`);
-      
-      setTimeout(() => {
-        const alternativeServer = app.listen(alternativePort, () => {
-          console.log(`🚀 Servidor iniciado na porta alternativa: http://localhost:${alternativePort}`);
-        });
-        
-        alternativeServer.on('error', (altErr) => {
-          console.error(`❌ Erro na porta alternativa ${alternativePort}:`, altErr.message);
-          process.exit(1);
-        });
-      }, 1000);
+      console.error(`❌ Porta ${PORT} em uso. Tente outra porta.`);
     } else {
-      console.error('❌ Erro ao iniciar servidor:', err);
-      process.exit(1);
+      console.error("Erro ao iniciar servidor:", err.message);
     }
   });
 }
 
-// Inicia o servidor
 startServer();
