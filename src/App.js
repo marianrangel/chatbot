@@ -70,6 +70,9 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [historicos, setHistoricos] = useState([]);
+  const [showHistoricos, setShowHistoricos] = useState(false);
+  const [selectedHistorico, setSelectedHistorico] = useState(null);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -87,6 +90,28 @@ function App() {
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [prompt]);
+
+  // Buscar históricos ao abrir menu
+  const fetchHistoricos = async () => {
+    try {
+      const response = await fetch('https://chat-back-end-2.onrender.com/api/chat/historicos');
+      const data = await response.json();
+      setHistoricos(data);
+    } catch (error) {
+      setHistoricos([]);
+    }
+  };
+
+  // Buscar detalhes de uma conversa antiga
+  const fetchHistoricoDetalhe = async (sessionId) => {
+    try {
+      const response = await fetch(`https://chat-back-end-2.onrender.com/api/chat/historicos/${sessionId}`);
+      const data = await response.json();
+      setSelectedHistorico(data);
+    } catch (error) {
+      setSelectedHistorico(null);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -144,6 +169,45 @@ function App() {
 
   return (
     <div className={`chat-container ${darkMode ? 'dark-mode' : ''}`}>
+      {/* Menu de Históricos */}
+      <button onClick={() => { setShowHistoricos(!showHistoricos); if (!showHistoricos) fetchHistoricos(); }} className="new-chat-btn" style={{margin:'10px'}}>
+        📜 Históricos
+      </button>
+      {showHistoricos && (
+        <div className="historicos-menu" style={{background:'#fff',border:'1px solid #ccc',padding:'10px',maxHeight:'300px',overflowY:'auto',position:'absolute',zIndex:10}}>
+          <h3>Conversas Antigas</h3>
+          {historicos.length === 0 && <p>Nenhum histórico encontrado.</p>}
+          <ul style={{listStyle:'none',padding:0}}>
+            {historicos.map(h => (
+              <li key={h.sessionId} style={{marginBottom:'8px'}}>
+                <button style={{width:'100%'}} onClick={() => fetchHistoricoDetalhe(h.sessionId)}>
+                  {h.sessionId} <br/>
+                  <small>{new Date(h.startTime).toLocaleString('pt-BR')}</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button onClick={() => { setShowHistoricos(false); setSelectedHistorico(null); }} style={{marginTop:'10px'}}>Fechar</button>
+        </div>
+      )}
+      {selectedHistorico && (
+        <div className="historico-detalhe" style={{background:'#f9f9f9',border:'1px solid #aaa',padding:'10px',margin:'10px 0'}}>
+          <h4>Histórico: {selectedHistorico.sessionId}</h4>
+          <p><b>Início:</b> {selectedHistorico.estatisticas?.dataFormatada}</p>
+          <p><b>Fim:</b> {selectedHistorico.estatisticas?.dataFimFormatada}</p>
+          <p><b>Duração:</b> {selectedHistorico.estatisticas?.duracaoMinutos?.toFixed(1)} min</p>
+          <p><b>Total de Mensagens:</b> {selectedHistorico.estatisticas?.totalMensagens}</p>
+          <div style={{maxHeight:'200px',overflowY:'auto',background:'#fff',padding:'5px',border:'1px solid #eee'}}>
+            {selectedHistorico.messages?.map((msg, idx) => (
+              <div key={idx} style={{marginBottom:'4px'}}>
+                <b>{msg.role === 'user' ? 'Usuário' : 'Bot'}:</b> {msg.content || msg.parts?.[0]?.text}
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setSelectedHistorico(null)} style={{marginTop:'10px'}}>Fechar Detalhes</button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="chat-header">
         <div className="header-title">
