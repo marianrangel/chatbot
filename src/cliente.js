@@ -1,7 +1,7 @@
 // client.js - Frontend com salvamento de histórico
 
 // Configurações globais
-const backendUrl = window.location.origin; // Adapte conforme necessário
+const backendUrl = 'https://chat-back-end-2.onrender.com'; // Corrigido para sempre usar o backend do Render
 let chatHistory = [];
 
 // Variáveis para controle de sessão
@@ -220,6 +220,96 @@ async function salvarHistoricoManual() {
   alert(`Histórico salvo! SessionID: ${currentSessionId}`);
 }
 
+// NOVA FUNÇÃO: Buscar históricos de conversas antigas
+async function buscarHistoricosAntigos() {
+  try {
+    const response = await fetch(`${backendUrl}/api/chat/historicos`);
+    if (!response.ok) throw new Error('Erro ao buscar históricos');
+    const historicos = await response.json();
+    return historicos;
+  } catch (error) {
+    console.error('Erro ao buscar históricos:', error);
+    return [];
+  }
+}
+
+// NOVA FUNÇÃO: Exibir menu de históricos na interface
+async function exibirMenuHistoricos() {
+  const historicos = await buscarHistoricosAntigos();
+  const chatContainer = document.getElementById('chat-container');
+  let menu = document.getElementById('menu-historicos');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'menu-historicos';
+    menu.style.background = '#fff';
+    menu.style.border = '1px solid #ccc';
+    menu.style.padding = '10px';
+    menu.style.maxHeight = '300px';
+    menu.style.overflowY = 'auto';
+    menu.style.position = 'absolute';
+    menu.style.zIndex = '10';
+    menu.style.top = '10px';
+    menu.style.right = '10px';
+    chatContainer.appendChild(menu);
+  }
+  menu.innerHTML = `<h3>Históricos de Conversas</h3>`;
+  if (historicos.length === 0) {
+    menu.innerHTML += '<p>Nenhum histórico encontrado.</p>';
+  } else {
+    menu.innerHTML += '<ul style="list-style:none;padding:0;">' +
+      historicos.map(h => `<li style='margin-bottom:8px;'><button style='width:100%' onclick='carregarHistoricoAntigo("${h.sessionId}")'>${h.sessionId}<br><small>${new Date(h.startTime).toLocaleString('pt-BR')}</small></button></li>`).join('') + '</ul>';
+  }
+  menu.innerHTML += `<button onclick='fecharMenuHistoricos()' style='margin-top:10px;'>Fechar</button>`;
+}
+
+// NOVA FUNÇÃO: Carregar histórico antigo na interface
+async function carregarHistoricoAntigo(sessionId) {
+  try {
+    const response = await fetch(`${backendUrl}/api/chat/historicos/${sessionId}`);
+    if (!response.ok) throw new Error('Erro ao buscar histórico');
+    const historico = await response.json();
+    const chatContainer = document.getElementById('chat-container');
+    chatContainer.innerHTML = `<h4>Histórico: ${historico.sessionId}</h4>`;
+    historico.messages.forEach(msg => {
+      const div = document.createElement('div');
+      div.className = 'mensagem ' + (msg.role === 'user' ? 'usuario' : 'bot');
+      div.innerHTML = `<div class='conteudo-mensagem'><strong>${msg.role === 'user' ? 'Você' : 'Bot'}:</strong> ${escapeHtml(msg.content || msg.parts?.[0]?.text)}</div>`;
+      chatContainer.appendChild(div);
+    });
+    chatContainer.innerHTML += `<button onclick='fecharMenuHistoricos()' style='margin-top:10px;'>Fechar Histórico</button>`;
+  } catch (error) {
+    alert('Erro ao carregar histórico!');
+  }
+}
+
+// NOVA FUNÇÃO: Fechar menu de históricos
+function fecharMenuHistoricos() {
+  const menu = document.getElementById('menu-historicos');
+  if (menu) menu.remove();
+  // Opcional: pode recarregar o chat atual aqui se quiser
+}
+
+// Adiciona botão para abrir o menu de históricos
+function adicionarBotaoHistoricos() {
+  const chatContainer = document.getElementById('chat-container');
+  let btn = document.getElementById('btn-historicos');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'btn-historicos';
+    btn.textContent = '📜 Históricos';
+    btn.style.position = 'absolute';
+    btn.style.top = '10px';
+    btn.style.left = '10px';
+    btn.style.zIndex = '20';
+    btn.onclick = exibirMenuHistoricos;
+    chatContainer.appendChild(btn);
+  }
+}
+
+// Corrige escopo global para funções usadas em onclick
+window.carregarHistoricoAntigo = carregarHistoricoAntigo;
+window.fecharMenuHistoricos = fecharMenuHistoricos;
+
 // Event listeners quando a página carrega
 document.addEventListener('DOMContentLoaded', function() {
   // Registra o acesso do usuário
@@ -273,4 +363,5 @@ document.addEventListener('DOMContentLoaded', function() {
   exibirMensagemBot('Olá! Como posso ajudá-lo hoje?');
   
   console.log(`🎯 Sistema iniciado. SessionID: ${currentSessionId}`);
+  adicionarBotaoHistoricos();
 });
