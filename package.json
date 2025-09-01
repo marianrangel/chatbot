@@ -4,10 +4,10 @@
   "description": "Servidor Node.js com Express para chat com API Gemini",
   "main": "serve.js",
   "scripts": {
-    "start:backend": "node serve.js",
-    "start:frontend": "react-scripts start",
-    "dev:backend": "nodemon serve.js",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run start:frontend\""
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
   },
   "keywords": [
     "express",
@@ -24,9 +24,24 @@
     "dotenv": "^16.5.0",
     "express": "^4.21.2",
     "mongodb": "^6.17.0",
-    "mongoose": "^8.17.0"
+    "mongoose": "^8.17.0",
+    "react-dom": "^19.1.1",
+    "react-scripts": "^5.0.1",
+    "web-vitals": "^5.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

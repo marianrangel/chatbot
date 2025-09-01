@@ -1,69 +1,9 @@
-// App.js
+// App.js - Corrigido para usar o backend
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import './App.css';
 
-
-
-// Configuração da API
-const genAI = new GoogleGenerativeAI("AIzaSyAHqN0QsXXpsbF2zYbALEjCbp7c05lv-6o");
-
-// Função para verificar se a mensagem contém perguntas sobre data/hora
-const isDateTimeQuestion = (message) => {
-  const dateTimeRegex = /que (dia|data|horas?|horário|hora|mes|mês|ano) (é|são|estamos|temos)/i;
-  const dateRegex = /(data|dia|mês|mes|ano|hora|horas|horário)/i;
-  const questionRegex = /(qual|que|me\s+diga|me\s+fala|poderia|pode|sabe)/i;
-  
-  return (
-    dateTimeRegex.test(message) || 
-    (dateRegex.test(message) && questionRegex.test(message)) ||
-    message.includes("que horas são") ||
-    message.includes("data de hoje") ||
-    message.includes("dia de hoje") ||
-    message.includes("dia é hoje")
-  );
-};
-
-// Função para gerar resposta de data/hora
-const generateDateTimeResponse = () => {
-  const now = new Date();
-  
-  // Formatação para português brasileiro
-  const formatter = new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZoneName: 'short'
-  });
-  
-  const dateStr = formatter.format(now);
-  
-  // Criando uma resposta mais natural
-  return `Agora são ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')} do dia ${now.getDate()} de ${getMonthName(now.getMonth())} de ${now.getFullYear()}, ${getWeekdayName(now.getDay())}. (${dateStr})`;
-};
-
-// Função auxiliar para obter o nome do mês em português
-const getMonthName = (monthIndex) => {
-  const months = [
-    'janeiro', 'fevereiro', 'março', 'abril', 
-    'maio', 'junho', 'julho', 'agosto', 
-    'setembro', 'outubro', 'novembro', 'dezembro'
-  ];
-  return months[monthIndex];
-};
-
-// Função auxiliar para obter o nome do dia da semana em português
-const getWeekdayName = (dayIndex) => {
-  const weekdays = [
-    'domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 
-    'quinta-feira', 'sexta-feira', 'sábado'
-  ];
-  return weekdays[dayIndex];
-};
+// Configuração do backend
+const backendUrl = 'https://chat-back-end-2.onrender.com';
 
 function App() {
   const [prompt, setPrompt] = useState('');
@@ -73,17 +13,22 @@ function App() {
   const [historicos, setHistoricos] = useState([]);
   const [showHistoricos, setShowHistoricos] = useState(false);
   const [selectedHistorico, setSelectedHistorico] = useState(null);
+  const [chatHistory, setChatHistory] = useState([]);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // Rolagem automática para a última mensagem
+  // Variáveis de sessão
+  const [sessionId] = useState(`sessao_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+  const [startTime] = useState(new Date());
+
+  // Rolagem automática
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Ajusta a altura do textarea dinamicamente
+  // Ajusta altura do textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -91,67 +36,134 @@ function App() {
     }
   }, [prompt]);
 
-  // Buscar históricos ao abrir menu
-  const fetchHistoricos = async () => {
+  // Registrar acesso do usuário
+  useEffect(() => {
+    const registrarAcesso = async () => {
+      try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const { ip } = await response.json();
+        
+        await fetch(`${backendUrl}/api/log-connection`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ip,
+            acao: 'ACESSO_CHATBOT',
+            nomeBot: 'ChatBot-Principal-IFCODE'
+          })
+        });
+      } catch (error) {
+        console.error('Erro ao registrar acesso:', error);
+      }
+    };
+    
+    registrarAcesso();
+  }, []);
+
+  // Salvar histórico no backend
+  const salvarHistorico = async (messagesArray) => {
     try {
-      const response = await fetch('https://chat-back-end-2.onrender.com/api/chat/historicos');
-      const data = await response.json();
-      setHistoricos(data);
+      await fetch(`${backendUrl}/api/chat/salvar-historico`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          botId: "chatbotPrincipalIFCODE",
+          startTime: startTime.toISOString(),
+          endTime: new Date().toISOString(),
+          messages: messagesArray
+        })
+      });
     } catch (error) {
-      setHistoricos([]);
+      console.error('Erro ao salvar histórico:', error);
     }
   };
 
-  // Buscar detalhes de uma conversa antiga
-  const fetchHistoricoDetalhe = async (sessionId) => {
-    try {
-      const response = await fetch(`https://chat-back-end-2.onrender.com/api/chat/historicos/${sessionId}`);
-      const data = await response.json();
-      setSelectedHistorico(data);
-    } catch (error) {
-      setSelectedHistorico(null);
-    }
-  };
-
+  // Função principal de envio
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || loading) return;
 
     const userMessage = prompt;
-    setMessages(prev => [...prev, { text: userMessage, sender: 'user' }]);
     setPrompt('');
+    
+    // Adiciona mensagem do usuário na interface
+    const newMessages = [...messages, { text: userMessage, sender: 'user' }];
+    setMessages(newMessages);
     setLoading(true);
 
     try {
-      // Verificar se é uma pergunta sobre data/hora
-      if (isDateTimeQuestion(userMessage)) {
-        // Se for pergunta sobre data/hora, gerar resposta local
-        const dateTimeResponse = generateDateTimeResponse();
-        setTimeout(() => {
-          setMessages(prev => [...prev, { text: dateTimeResponse, sender: 'bot' }]);
-          setLoading(false);
-        }, 500); // Pequeno atraso para parecer natural
-      } else {
-        // Caso contrário, usar a API do modelo
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-        const result = await model.generateContent(userMessage);
-        const text = await result.response.text();
-        setMessages(prev => [...prev, { text: text, sender: 'bot' }]);
-        setLoading(false);
+      // Envia para o backend
+      const response = await fetch(`${backendUrl}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mensagem: userMessage,
+          historico: chatHistory
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na requisição: ${response.status}`);
       }
+
+      const data = await response.json();
+      
+      if (data.erro) {
+        throw new Error(data.erro);
+      }
+
+      // Atualiza histórico e interface
+      setChatHistory(data.historico);
+      const finalMessages = [...newMessages, { text: data.resposta, sender: 'bot' }];
+      setMessages(finalMessages);
+
+      // Salva histórico
+      await salvarHistorico(data.historico);
+
     } catch (error) {
-      console.error("Erro ao gerar resposta:", error);
+      console.error('Erro ao enviar mensagem:', error);
       setMessages(prev => [...prev, { 
-        text: "Ocorreu um erro. Verifique sua chave de API e conexão.", 
+        text: 'Desculpe, ocorreu um erro ao processar sua mensagem. Verifique se o servidor está online.', 
         sender: 'bot', 
         error: true 
       }]);
+    } finally {
       setLoading(false);
     }
   };
 
+  // Buscar históricos
+  const fetchHistoricos = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/historicos`);
+      const data = await response.json();
+      setHistoricos(data.sessoes || []);
+    } catch (error) {
+      console.error('Erro ao buscar históricos:', error);
+      setHistoricos([]);
+    }
+  };
+
+  // Buscar detalhes de histórico
+  const fetchHistoricoDetalhe = async (sessionId) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/historicos/${sessionId}`);
+      const data = await response.json();
+      setSelectedHistorico(data);
+    } catch (error) {
+      console.error('Erro ao buscar detalhe:', error);
+      setSelectedHistorico(null);
+    }
+  };
+
   const startNewChat = () => {
+    // Salva histórico atual antes de limpar
+    if (chatHistory.length > 0) {
+      salvarHistorico(chatHistory);
+    }
     setMessages([]);
+    setChatHistory([]);
   };
 
   const toggleDarkMode = () => {
@@ -159,7 +171,6 @@ function App() {
     document.body.classList.toggle('dark-mode');
   };
 
-  // Permite enviar mensagem com Enter (Shift+Enter para quebra de linha)
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -170,41 +181,97 @@ function App() {
   return (
     <div className={`chat-container ${darkMode ? 'dark-mode' : ''}`}>
       {/* Menu de Históricos */}
-      <button onClick={() => { setShowHistoricos(!showHistoricos); if (!showHistoricos) fetchHistoricos(); }} className="new-chat-btn" style={{margin:'10px'}}>
+      <button 
+        onClick={() => { 
+          setShowHistoricos(!showHistoricos); 
+          if (!showHistoricos) fetchHistoricos(); 
+        }} 
+        className="new-chat-btn" 
+        style={{margin:'10px'}}
+      >
         📜 Históricos
       </button>
+
       {showHistoricos && (
-        <div className="historicos-menu" style={{background:'#fff',border:'1px solid #ccc',padding:'10px',maxHeight:'300px',overflowY:'auto',position:'absolute',zIndex:10}}>
+        <div className="historicos-menu" style={{
+          background: '#fff',
+          border: '1px solid #ccc',
+          padding: '10px',
+          maxHeight: '300px',
+          overflowY: 'auto',
+          position: 'absolute',
+          zIndex: 10,
+          top: '60px',
+          right: '10px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+        }}>
           <h3>Conversas Antigas</h3>
           {historicos.length === 0 && <p>Nenhum histórico encontrado.</p>}
-          <ul style={{listStyle:'none',padding:0}}>
+          <ul style={{listStyle:'none', padding:0}}>
             {historicos.map(h => (
               <li key={h.sessionId} style={{marginBottom:'8px'}}>
-                <button style={{width:'100%'}} onClick={() => fetchHistoricoDetalhe(h.sessionId)}>
-                  {h.sessionId} <br/>
+                <button 
+                  style={{width:'100%', padding:'8px', borderRadius:'4px'}} 
+                  onClick={() => fetchHistoricoDetalhe(h.sessionId)}
+                >
+                  {h.sessionId.substring(0, 20)}... <br/>
                   <small>{new Date(h.startTime).toLocaleString('pt-BR')}</small>
                 </button>
               </li>
             ))}
           </ul>
-          <button onClick={() => { setShowHistoricos(false); setSelectedHistorico(null); }} style={{marginTop:'10px'}}>Fechar</button>
+          <button 
+            onClick={() => { 
+              setShowHistoricos(false); 
+              setSelectedHistorico(null); 
+            }} 
+            style={{marginTop:'10px', width:'100%'}}
+          >
+            Fechar
+          </button>
         </div>
       )}
+
       {selectedHistorico && (
-        <div className="historico-detalhe" style={{background:'#f9f9f9',border:'1px solid #aaa',padding:'10px',margin:'10px 0'}}>
-          <h4>Histórico: {selectedHistorico.sessionId}</h4>
+        <div className="historico-detalhe" style={{
+          background: '#f9f9f9',
+          border: '1px solid #aaa',
+          padding: '10px',
+          margin: '10px 0',
+          borderRadius: '8px',
+          maxHeight: '400px',
+          overflow: 'hidden'
+        }}>
+          <h4>Histórico: {selectedHistorico.sessionId?.substring(0, 30)}...</h4>
           <p><b>Início:</b> {selectedHistorico.estatisticas?.dataFormatada}</p>
-          <p><b>Fim:</b> {selectedHistorico.estatisticas?.dataFimFormatada}</p>
-          <p><b>Duração:</b> {selectedHistorico.estatisticas?.duracaoMinutos?.toFixed(1)} min</p>
-          <p><b>Total de Mensagens:</b> {selectedHistorico.estatisticas?.totalMensagens}</p>
-          <div style={{maxHeight:'200px',overflowY:'auto',background:'#fff',padding:'5px',border:'1px solid #eee'}}>
+          <p><b>Duração:</b> {selectedHistorico.estatisticas?.duracaoMinutos} min</p>
+          <p><b>Total:</b> {selectedHistorico.estatisticas?.totalMensagens} mensagens</p>
+          
+          <div style={{
+            maxHeight: '200px',
+            overflowY: 'auto',
+            background: '#fff',
+            padding: '8px',
+            border: '1px solid #eee',
+            borderRadius: '4px'
+          }}>
             {selectedHistorico.messages?.map((msg, idx) => (
-              <div key={idx} style={{marginBottom:'4px'}}>
-                <b>{msg.role === 'user' ? 'Usuário' : 'Bot'}:</b> {msg.content || msg.parts?.[0]?.text}
+              <div key={idx} style={{marginBottom:'6px', padding:'4px', borderBottom:'1px solid #f0f0f0'}}>
+                <b>{msg.role === 'user' ? 'Você' : 'Bot'}:</b> 
+                <span style={{marginLeft:'8px'}}>
+                  {(msg.content || msg.parts?.[0]?.text || '').substring(0, 100)}
+                  {(msg.content || msg.parts?.[0]?.text || '').length > 100 ? '...' : ''}
+                </span>
               </div>
             ))}
           </div>
-          <button onClick={() => setSelectedHistorico(null)} style={{marginTop:'10px'}}>Fechar Detalhes</button>
+          <button 
+            onClick={() => setSelectedHistorico(null)} 
+            style={{marginTop:'10px', width:'100%'}}
+          >
+            Fechar Detalhes
+          </button>
         </div>
       )}
 
@@ -232,7 +299,6 @@ function App() {
             <div className="welcome-icon">✨</div>
             <h2>Bem-vindo ao Chatbot de Autocuidado</h2>
             <p>Estou aqui para conversar sobre bem-estar, oferecer dicas para relaxar e ajudar nas suas rotinas de autocuidado!</p>
-            <p>Você também pode me perguntar a data e hora atuais a qualquer momento.</p>
           </div>
         ) : (
           <div className="messages-list">
@@ -246,6 +312,14 @@ function App() {
                 </div>
               </div>
             ))}
+            {loading && (
+              <div className="message-wrapper bot-message">
+                <div className="message">
+                  <div className="loading-spinner"></div>
+                  <p>Digitando...</p>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -260,8 +334,9 @@ function App() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Digite sua mensagem... "
+              placeholder="Digite sua mensagem..."
               rows={1}
+              disabled={loading}
             />
           </div>
           <button 
