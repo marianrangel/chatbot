@@ -1,18 +1,47 @@
 // server.js - Atualizado com funcionalidade de histórico
 const express = require('express');
+const cors = require('cors'); // Adicione esta linha
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const dotenv = require('dotenv');
 const { MongoClient } = require('mongodb');
 const mongoose = require('mongoose');
 
-// Importar o modelo SessaoChat (certifique-se de que o arquivo existe)
-// const SessaoChat = require('./models/SessaoChat');
-
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3004;
+
+// CONFIGURAÇÃO CORS - Adicione estas linhas ANTES dos outros middlewares
+const corsOptions = {
+  origin: [
+    'http://localhost:3001',
+    'http://localhost:3000', 
+    'https://seu-dominio-render.onrender.com', // Substitua pelo seu domínio do Render
+    'https://chat-back-end-2.onrender.com' // Se este for seu domínio do Render
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
+
+// Middleware adicional para headers CORS personalizados
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Responder a preflight requests
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
