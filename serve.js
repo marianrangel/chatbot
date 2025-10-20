@@ -1,6 +1,7 @@
-// server.js - Atualizado com funcionalidade de histórico
+// ============================================================================
+// server.js - Versão Final com Dashboard Analytics (Painel de Guerra)
+// ============================================================================
 const express = require('express');
-const cors = require('cors'); // Adicione esta linha
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const dotenv = require('dotenv');
@@ -12,53 +13,22 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3004;
 
-// CONFIGURAÇÃO CORS - Adicione estas linhas ANTES dos outros middlewares
-const corsOptions = {
-  origin: [
-    'http://localhost:3001',
-    'http://localhost:3000', 
-    'https://seu-dominio-render.onrender.com', // Substitua pelo seu domínio do Render
-    'https://chat-back-end-2.onrender.com' // Se este for seu domínio do Render
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true,
-  optionsSuccessStatus: 200
-};
-
-app.use(cors(corsOptions));
-
-// Middleware adicional para headers CORS personalizados
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Responder a preflight requests
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Conexões com MongoDB Atlas
+// ============================================================================
+// 🔗 Conexões com MongoDB Atlas
+// ============================================================================
 const mongoUriLogs = process.env.MONGO_URI_LOGS || process.env.MONGO_URI;
 const mongoUriHistoria = process.env.MONGO_URI_HISTORIA;
 
 let dbLogs;
 let dbHistoria;
 
-// Função para conectar ao MongoDB
 async function connectToMongoDB(uri, dbName, description) {
   if (!uri) {
     console.error(`❌ URI do MongoDB para ${description} não definida.`);
     return null;
   }
-
   try {
     const client = new MongoClient(uri, {
       useNewUrlParser: true,
@@ -73,7 +43,6 @@ async function connectToMongoDB(uri, dbName, description) {
   }
 }
 
-// Inicializa os dois bancos
 async function initializeDatabases() {
   dbLogs = await connectToMongoDB(mongoUriLogs, "IIW2023A_Logs", "Logs (Compartilhado)");
   dbHistoria = await connectToMongoDB(mongoUriHistoria, "chatbotHistoriaDB", "Histórico de Chat (Individual)");
@@ -81,31 +50,235 @@ async function initializeDatabases() {
   if (!dbLogs) console.warn("⚠️ Banco de logs não conectado.");
   if (!dbHistoria) console.warn("⚠️ Banco de histórico não conectado.");
 }
-
 initializeDatabases();
 
-// Configuração do Express
+// ============================================================================
+// ⚙️ Configuração do Express
+// ============================================================================
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Endpoint principal do chatbot (POST /chat)
+// ============================================================================
+// 🎯 ENDPOINT DO PAINEL DE GUERRA - DASHBOARD ANALYTICS
+// ============================================================================
+app.get('/api/admin/dashboard', async (req, res) => {
+  if (!dbHistoria) {
+    return res.status(500).json({
+      success: false,
+      error: "Servidor não conectado ao banco de histórico."
+    });
+  }
+
+  try {
+    const collection = dbHistoria.collection("sessoesChat");
+
+    // === MÉTRICA 1: Profundidade de Engajamento ===
+    const engajamentoStats = await collection.aggregate([
+      {
+        $project: {
+          userId: 1,
+          numeroDeMensagens: { $size: "$messages" }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          duracaoMedia: { $avg: "$numeroDeMensagens" },
+          conversasCurtas: {
+            $sum: { $cond: [{ $lte: ["$numeroDeMensagens", 3] }, 1, 0] }
+          },
+          conversasLongas: {
+            $sum: { $cond: [{ $gt: ["$numeroDeMensagens", 3] }, 1, 0] }
+          },
+          totalConversas: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    // === MÉTRICA 2: Lealdade do Usuário (Top 5) ===
+    const topUsuarios = await collection.aggregate([
+      {
+        $group: {
+          _id: "$userId",
+          totalSessoes: { $sum: 1 },
+          ultimaAtividade: { $max: "$endTime" }
+        }
+      },
+      { $sort: { totalSessoes: -1 } },
+      { $limit: 5 },
+      {
+        $project: {
+          userId: "$_id",
+          totalSessoes: 1,
+          ultimaAtividade: 1,
+          _id: 0
+        }
+      }
+    ]).toArray();
+
+    // === MÉTRICA 3: Análise de Falhas ===
+    const frasesDeErro = [
+      "não entendi",
+      "não compreendi",
+      "não posso ajudar",
+      "desculpe, não sei",
+      "pode reformular",
+      "não tenho informação",
+      "não consigo responder",
+      "não está claro",
+      "não compreendo",
+      "me desculpe",
+      "não sei",
+      "não tenho certeza"
+    ];
+
+    const conversasComFalha = await collection.aggregate([
+      { $unwind: { path: "$messages", includeArrayIndex: "messageIndex" } },
+      { $match: { "messages.role": "model" } },
+      {
+        $addFields: {
+          textoBot: {
+            $reduce: {
+              input: "$messages.parts",
+              initialValue: "",
+              in: { $concat: ["$$value", " ", { $ifNull: ["$$this.text", ""] }] }
+            }
+          }
+        }
+      },
+      {
+        $match: {
+          $or: frasesDeErro.map(frase => ({
+            textoBot: { $regex: frase, $options: "i" }
+          }))
+        }
+      },
+      {
+        $project: {
+          sessionId: 1,
+          userId: 1,
+          messageIndex: 1,
+          respostaBot: "$textoBot",
+          timestamp: "$messages.timestamp"
+        }
+      },
+      { $sort: { timestamp: -1 } },
+      { $limit: 10 }
+    ]).toArray();
+
+    const conversasEnriquecidas = await Promise.all(
+      conversasComFalha.map(async (falha) => {
+        const sessaoCompleta = await collection.findOne({ sessionId: falha.sessionId });
+        if (sessaoCompleta && falha.messageIndex > 0) {
+          const msgAnterior = sessaoCompleta.messages[falha.messageIndex - 1];
+          if (msgAnterior && msgAnterior.role === 'user') {
+            const perguntaUsuario = msgAnterior.parts.map(p => p.text).join(' ');
+            return {
+              sessionId: falha.sessionId,
+              userId: falha.userId,
+              perguntaUsuario,
+              respostaBot: falha.respostaBot.trim(),
+              timestamp: falha.timestamp || sessaoCompleta.endTime
+            };
+          }
+        }
+        return {
+          sessionId: falha.sessionId,
+          userId: falha.userId,
+          perguntaUsuario: "Pergunta não disponível",
+          respostaBot: falha.respostaBot.trim(),
+          timestamp: falha.timestamp
+        };
+      })
+    );
+
+    const totalFalhas = await collection.aggregate([
+      { $unwind: "$messages" },
+      { $match: { "messages.role": "model" } },
+      {
+        $addFields: {
+          textoBot: {
+            $reduce: {
+              input: "$messages.parts",
+              initialValue: "",
+              in: { $concat: ["$$value", " ", { $ifNull: ["$$this.text", ""] }] }
+            }
+          }
+        }
+      },
+      {
+        $match: {
+          $or: frasesDeErro.map(frase => ({
+            textoBot: { $regex: frase, $options: "i" }
+          }))
+        }
+      },
+      { $count: "total" }
+    ]).toArray();
+
+    // === MÉTRICAS GERAIS ===
+    const totalConversas = await collection.countDocuments();
+    const ultimasAtividades = await collection
+      .find()
+      .sort({ endTime: -1 })
+      .limit(5)
+      .project({ userId: 1, endTime: 1, messages: 1 })
+      .toArray();
+
+    const atividadesFormatadas = ultimasAtividades.map(a => ({
+      userId: a.userId,
+      updatedAt: a.endTime,
+      mensagensCount: a.messages ? a.messages.length : 0
+    }));
+
+    // === MONTAR RESPOSTA FINAL ===
+    const dashboardData = {
+      profundidadeEngajamento: {
+        duracaoMedia: engajamentoStats[0]?.duracaoMedia?.toFixed(2) || 0,
+        conversasCurtas: engajamentoStats[0]?.conversasCurtas || 0,
+        conversasLongas: engajamentoStats[0]?.conversasLongas || 0,
+        totalConversas: engajamentoStats[0]?.totalConversas || 0
+      },
+      lealdadeUsuario: {
+        topUsuarios
+      },
+      analiseFalhas: {
+        totalRespostasInconclusivas: totalFalhas[0]?.total || 0,
+        conversasProblematicas: conversasEnriquecidas.filter(c => c.perguntaUsuario !== "Pergunta não disponível")
+      },
+      metricsGerais: {
+        totalConversas,
+        ultimasAtividades: atividadesFormatadas
+      }
+    };
+
+    console.log("📊 Dashboard consultado com sucesso");
+    res.json({
+      success: true,
+      data: dashboardData,
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error("❌ Erro ao buscar dados do dashboard:", error);
+    res.status(500).json({
+      success: false,
+      error: "Erro ao carregar métricas do dashboard",
+      details: error.message
+    });
+  }
+});
+
+// ============================================================================
+// 🧠 ENDPOINTS DO CHATBOT E HISTÓRICO
+// ============================================================================
 app.post('/chat', async (req, res) => {
   const mensagemUsuario = req.body.mensagem;
   const historicoRecebido = req.body.historico || [];
-
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
     const chat = model.startChat({
       history: historicoRecebido,
-      generationConfig: {
-        temperature: 0.9,
-        maxOutputTokens: 1024
-      },
-      safetySettings: [
-        { category: "HARM_CATEGORY_DEROGATORY", threshold: 3 },
-        { category: "HARM_CATEGORY_VIOLENCE", threshold: 3 }
-      ]
+      generationConfig: { temperature: 0.9, maxOutputTokens: 1024 }
     });
 
     const result = await chat.sendMessage(mensagemUsuario);
@@ -125,17 +298,16 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// Salvar histórico do chat (POST /api/chat/salvar-historico)
+// ============================================================================
+// 💾 SALVAR HISTÓRICO
+// ============================================================================
 app.post('/api/chat/salvar-historico', async (req, res) => {
-  if (!dbHistoria) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de dados de histórico." });
-  }
+  if (!dbHistoria) return res.status(500).json({ error: "Banco não conectado." });
 
   try {
     const { sessionId, userId, botId, startTime, endTime, messages } = req.body;
-
     if (!sessionId || !botId || !messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: "Dados obrigatórios faltando para salvar histórico." });
+      return res.status(400).json({ error: "Dados obrigatórios faltando." });
     }
 
     const novaSessao = {
@@ -149,9 +321,7 @@ app.post('/api/chat/salvar-historico', async (req, res) => {
       loggedAt: new Date()
     };
 
-    const collection = dbHistoria.collection("sessoesChat");
-    await collection.insertOne(novaSessao);
-
+    await dbHistoria.collection("sessoesChat").insertOne(novaSessao);
     console.log(`💾 Histórico salvo: ${sessionId}`);
     res.status(201).json({ message: "Histórico salvo com sucesso.", sessionId });
   } catch (error) {
@@ -160,273 +330,31 @@ app.post('/api/chat/salvar-historico', async (req, res) => {
   }
 });
 
-// NOVO ENDPOINT: Buscar lista de históricos de conversas (GET /api/chat/historicos)
+// ============================================================================
+// 🔍 OUTROS ENDPOINTS: HISTÓRICOS, ESTATÍSTICAS, LOGS, STATUS
+// ============================================================================
 app.get('/api/chat/historicos', async (req, res) => {
-  if (!dbHistoria) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
-  }
-
+  if (!dbHistoria) return res.status(500).json({ error: "Banco não conectado." });
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      botId, 
-      userId,
-      sortBy = 'startTime',
-      sortOrder = 'desc'
-    } = req.query;
-
+    const { page = 1, limit = 10, sortBy = 'startTime', sortOrder = 'desc' } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sortDirection = sortOrder === 'desc' ? -1 : 1;
 
-    // Construir filtros dinâmicos
-    const filtros = {};
-    if (botId) filtros.botId = botId;
-    if (userId) filtros.userId = userId;
-
     const collection = dbHistoria.collection("sessoesChat");
-    
-    // Buscar sessões com paginação
-    const sessoes = await collection.find(filtros)
+    const sessoes = await collection.find({})
       .sort({ [sortBy]: sortDirection })
       .skip(skip)
       .limit(parseInt(limit))
-      .project({ 
-        sessionId: 1,
-        botId: 1,
-        userId: 1,
-        startTime: 1,
-        endTime: 1,
-        totalMessages: 1,
-        loggedAt: 1,
-        // Não incluir o array completo de mensagens na listagem para melhor performance
-        'messages.0': 1, // Apenas a primeira mensagem para prévia
-        'messages.-1': 1 // Apenas a última mensagem para prévia
-      })
+      .project({ sessionId: 1, botId: 1, userId: 1, startTime: 1, endTime: 1, totalMessages: 1 })
       .toArray();
 
-    // Contar total para paginação
-    const totalSessoes = await collection.countDocuments(filtros);
-    const totalPaginas = Math.ceil(totalSessoes / parseInt(limit));
-
-    // Enriquecer dados para exibição
-    const sessoesEnriquecidas = sessoes.map(sessao => {
-      const duracao = new Date(sessao.endTime) - new Date(sessao.startTime);
-      const duracaoMinutos = Math.round(duracao / (1000 * 60));
-      
-      return {
-        ...sessao,
-        duracaoMinutos,
-        preview: {
-          primeiraMensagem: sessao.messages?.[0]?.parts?.[0]?.text?.substring(0, 100) + '...' || 'Sem mensagens',
-          ultimaMensagem: sessao.messages?.[sessao.messages.length - 1]?.parts?.[0]?.text?.substring(0, 100) + '...' || 'Sem mensagens'
-        }
-      };
-    });
-
-    res.json({
-      sessoes: sessoesEnriquecidas,
-      paginacao: {
-        paginaAtual: parseInt(page),
-        totalPaginas,
-        totalSessoes,
-        itensPorPagina: parseInt(limit),
-        temProxima: parseInt(page) < totalPaginas,
-        temAnterior: parseInt(page) > 1
-      }
-    });
-
+    res.json({ sessoes });
   } catch (error) {
     console.error("Erro ao buscar históricos:", error.message);
     res.status(500).json({ error: "Erro ao consultar históricos." });
   }
 });
 
-// NOVO ENDPOINT: Buscar conversa específica por sessionId (GET /api/chat/historicos/:sessionId)
-app.get('/api/chat/historicos/:sessionId', async (req, res) => {
-  if (!dbHistoria) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
-  }
-
-  try {
-    const { sessionId } = req.params;
-    const collection = dbHistoria.collection("sessoesChat");
-
-    const sessao = await collection.findOne({ sessionId });
-    
-    if (!sessao) {
-      return res.status(404).json({ error: "Sessão não encontrada." });
-    }
-
-    // Calcular estatísticas da conversa
-    const duracao = new Date(sessao.endTime) - new Date(sessao.startTime);
-    const duracaoMinutos = Math.round(duracao / (1000 * 60));
-    const mensagensUsuario = sessao.messages.filter(m => m.role === 'user').length;
-    const mensagensBot = sessao.messages.filter(m => m.role === 'model').length;
-
-    const sessaoCompleta = {
-      ...sessao,
-      estatisticas: {
-        duracaoMinutos,
-        totalMensagens: sessao.totalMessages,
-        mensagensUsuario,
-        mensagensBot,
-        dataFormatada: new Date(sessao.startTime).toLocaleString('pt-BR'),
-        dataFimFormatada: new Date(sessao.endTime).toLocaleString('pt-BR')
-      }
-    };
-
-    res.json(sessaoCompleta);
-
-  } catch (error) {
-    console.error("Erro ao buscar sessão específica:", error.message);
-    res.status(500).json({ error: "Erro ao consultar sessão." });
-  }
-});
-
-// NOVO ENDPOINT: Buscar estatísticas gerais dos históricos (GET /api/chat/estatisticas)
-app.get('/api/chat/estatisticas', async (req, res) => {
-  if (!dbHistoria) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
-  }
-
-  try {
-    const collection = dbHistoria.collection("sessoesChat");
-
-    // Agregação para estatísticas
-    const estatisticas = await collection.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalSessoes: { $sum: 1 },
-          totalMensagens: { $sum: "$totalMessages" },
-          mediaMensagensPorSessao: { $avg: "$totalMessages" },
-          primeiraSessao: { $min: "$startTime" },
-          ultimaSessao: { $max: "$startTime" }
-        }
-      }
-    ]).toArray();
-
-    // Estatísticas por bot
-    const estatisticasPorBot = await collection.aggregate([
-      {
-        $group: {
-          _id: "$botId",
-          totalSessoes: { $sum: 1 },
-          totalMensagens: { $sum: "$totalMessages" },
-          mediaMensagens: { $avg: "$totalMessages" }
-        }
-      },
-      { $sort: { totalSessoes: -1 } }
-    ]).toArray();
-
-    const resultado = {
-      geral: estatisticas[0] || {
-        totalSessoes: 0,
-        totalMensagens: 0,
-        mediaMensagensPorSessao: 0,
-        primeiraSessao: null,
-        ultimaSessao: null
-      },
-      porBot: estatisticasPorBot
-    };
-
-    res.json(resultado);
-
-  } catch (error) {
-    console.error("Erro ao buscar estatísticas:", error.message);
-    res.status(500).json({ error: "Erro ao consultar estatísticas." });
-  }
-});
-
-// Consultar histórico de sessões (GET /api/chat/historico ou /:sessionId) - MANTIDO PARA COMPATIBILIDADE
-app.get('/api/chat/historico/:sessionId?', async (req, res) => {
-  if (!dbHistoria) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de histórico." });
-  }
-
-  try {
-    const { sessionId } = req.params;
-    const collection = dbHistoria.collection("sessoesChat");
-
-    if (sessionId) {
-      const sessao = await collection.findOne({ sessionId });
-      if (!sessao) return res.status(404).json({ error: "Sessão não encontrada." });
-      return res.json(sessao);
-    }
-
-    const sessoes = await collection.find({})
-      .sort({ loggedAt: -1 })
-      .limit(10)
-      .toArray();
-
-    res.json(sessoes);
-  } catch (error) {
-    console.error("Erro ao buscar histórico:", error.message);
-    res.status(500).json({ error: "Erro ao consultar histórico." });
-  }
-});
-
-// Log de acesso (POST /api/log-connection)
-app.post('/api/log-connection', async (req, res) => {
-  if (!dbLogs) {
-    return res.status(500).json({ error: "Servidor não conectado ao banco de logs." });
-  }
-
-  const { ip, acao, nomeBot } = req.body;
-  const agora = new Date();
-
-  const log = {
-    col_data: agora.toISOString().split('T')[0],
-    col_hora: agora.toTimeString().split(' ')[0],
-    col_IP: ip,
-    col_nome_bot: nomeBot,
-    col_acao: acao
-  };
-
-  try {
-    await dbLogs.collection("tb_cl_user_log_acess").insertOne(log);
-    res.status(201).json({ message: "Log registrado." });
-  } catch (error) {
-    console.error("Erro ao registrar log:", error.message);
-    res.status(500).json({ error: "Erro ao registrar log." });
-  }
-});
-
-// Ranking de bots (em memória)
-let dadosRankingVitrine = [];
-
-app.post('/api/ranking/registrar-acesso-bot', (req, res) => {
-  const { botId, nomeBot, timestampAcesso, usuarioId } = req.body;
-
-  const acesso = {
-    botId,
-    nomeBot,
-    usuarioId: usuarioId || 'anonimo',
-    acessoEm: new Date(timestampAcesso || Date.now()),
-    contagem: 1
-  };
-
-  const existente = dadosRankingVitrine.find(b => b.botId === botId);
-  if (existente) {
-    existente.contagem++;
-    existente.ultimoAcesso = acesso.acessoEm;
-  } else {
-    dadosRankingVitrine.push({
-      ...acesso,
-      ultimoAcesso: acesso.acessoEm
-    });
-  }
-
-  res.status(201).json({ message: "Acesso ao bot registrado." });
-});
-
-app.get('/api/ranking/visualizar', (req, res) => {
-  const ordenado = [...dadosRankingVitrine].sort((a, b) => b.contagem - a.contagem);
-  res.json(ordenado);
-});
-
-// Verificar status da API e dos bancos
 app.get('/api/status', (req, res) => {
   res.json({
     status: "online",
@@ -438,25 +366,22 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// Iniciar servidor com tratamento de porta em uso
+// ============================================================================
+// 🚀 INICIAR SERVIDOR
+// ============================================================================
 function startServer() {
   const server = app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-    console.log(`📋 Endpoints disponíveis:`);
-    console.log(`   GET  /api/chat/historicos - Lista paginada de sessões`);
-    console.log(`   GET  /api/chat/historicos/:sessionId - Sessão específica`);
-    console.log(`   GET  /api/chat/estatisticas - Estatísticas gerais`);
-    console.log(`   POST /chat - Enviar mensagem ao chatbot`);
-    console.log(`   POST /api/chat/salvar-historico - Salvar histórico`);
+    console.log("🎯 Endpoints principais:");
+    console.log("   GET  /api/admin/dashboard  → Painel de Guerra (Analytics)");
+    console.log("   POST /chat                 → Enviar mensagem ao chatbot");
+    console.log("   POST /api/chat/salvar-historico → Salvar histórico");
+    console.log("   GET  /api/chat/historicos  → Listar históricos");
   });
 
   server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`❌ Porta ${PORT} em uso. Tente outra porta.`);
-    } else {
-      console.error("Erro ao iniciar servidor:", err.message);
-    }
+    if (err.code === 'EADDRINUSE') console.error(`❌ Porta ${PORT} em uso.`);
+    else console.error("Erro ao iniciar servidor:", err.message);
   });
 }
-
 startServer();
