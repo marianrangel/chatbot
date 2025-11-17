@@ -1,13 +1,17 @@
-// server.js - Atualizado com funcionalidade de histórico
+// server.js - Atualizado com funcionalidade de histórico e customização de personalidade
 const express = require('express');
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const dotenv = require('dotenv');
 const { MongoClient } = require('mongodb');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 
-// Importar o modelo SessaoChat (certifique-se de que o arquivo existe)
-// const SessaoChat = require('./models/SessaoChat');
+// Importar modelos
+const User = require('./models/User');
+const AdminSettings = require('./models/AdminSettings');
+const authenticateToken = require('./middleware/auth');
+const { hashPassword, verifyPassword } = require('./utils/passwordUtils');
 
 dotenv.config();
 
@@ -15,13 +19,28 @@ const app = express();
 const PORT = process.env.PORT || 3004;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const JWT_SECRET = process.env.JWT_SECRET || 'seu_secret_key_super_seguro';
 
 // Conexões com MongoDB Atlas
 const mongoUriLogs = process.env.MONGO_URI_LOGS || process.env.MONGO_URI;
 const mongoUriHistoria = process.env.MONGO_URI_HISTORIA;
+const mongoUriUsers = process.env.MONGO_URI_USERS || process.env.MONGO_URI; // Para Mongoose
 
 let dbLogs;
 let dbHistoria;
+
+// Conectar ao MongoDB com Mongoose (para os modelos)
+async function connectMongoose() {
+  try {
+    await mongoose.connect(mongoUriUsers, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log(`✅ Mongoose conectado ao MongoDB`);
+  } catch (err) {
+    console.error(`❌ Erro ao conectar Mongoose:`, err.message);
+  }
+}
 
 // Função para conectar ao MongoDB
 async function connectToMongoDB(uri, dbName, description) {
@@ -46,6 +65,7 @@ async function connectToMongoDB(uri, dbName, description) {
 
 // Inicializa os dois bancos
 async function initializeDatabases() {
+  await connectMongoose();
   dbLogs = await connectToMongoDB(mongoUriLogs, "IIW2023A_Logs", "Logs (Compartilhado)");
   dbHistoria = await connectToMongoDB(mongoUriHistoria, "chatbotHistoriaDB", "Histórico de Chat (Individual)");
 
@@ -59,16 +79,43 @@ initializeDatabases();
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Endpoint principal do chatbot (POST /chat)
+// Endpoint principal do chatbot (POST /chat) - REFATORADO COM SUPORTE A PERSONALIDADE CUSTOMIZADA
 app.post('/chat', async (req, res) => {
   const mensagemUsuario = req.body.mensagem;
   const historicoRecebido = req.body.historico || [];
+  const userId = req.body.userId; // Agora aceita userId opcional
 
   try {
+    let systemInstruction = null;
+    
+    // SE o usuário está logado, buscar sua instrução personalizada
+    if (userId) {
+      const user = await User.findById(userId);
+      if (user && user.customSystemInstruction) {
+        systemInstruction = user.customSystemInstruction;
+        console.log(`✨ Usando instrução personalizada do usuário ${user.username}`);
+      }
+    }
+
+    // SE não tem instrução personalizada, buscar a instrução global do admin
+    if (!systemInstruction) {
+      const adminSettings = await AdminSettings.findOne();
+      systemInstruction = adminSettings?.globalSystemInstruction || 
+        "Você é um assistente útil, educado e bem informado. Responda com clareza e precisão.";
+      console.log(`🌍 Usando instrução global do administrador`);
+    }
+
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
+    // Construir histórico com a instrução de sistema
+    const historicoComSistema = [
+      { role: "user", parts: [{ text: systemInstruction }] },
+      { role: "model", parts: [{ text: "Entendido! Vou seguir essas instruções." }] },
+      ...historicoRecebido
+    ];
+
     const chat = model.startChat({
-      history: historicoRecebido,
+      history: historicoComSistema,
       generationConfig: {
         temperature: 0.9,
         maxOutputTokens: 1024
@@ -93,6 +140,201 @@ app.post('/chat', async (req, res) => {
   } catch (error) {
     console.error("Erro ao chamar API Gemini:", error);
     res.status(500).json({ erro: "Erro interno ao processar a mensagem." });
+  }
+});
+
+// ============================================================================
+// ENDPOINTS DE AUTENTICAÇÃO
+// ============================================================================
+
+// POST /api/auth/register - Registrar novo usuário
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password, passwordConfirm } = req.body;
+
+    // Validações
+    if (!username || !email || !password || !passwordConfirm) {
+      return res.status(400).json({ error: "Todos os campos são obrigatórios." });
+    }
+
+    if (password !== passwordConfirm) {
+      return res.status(400).json({ error: "Senhas não conferem." });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Senha deve ter no mínimo 6 caracteres." });
+    }
+
+    // Verificar se usuário já existe
+    const usuarioExistente = await User.findOne({ 
+      $or: [{ username }, { email }] 
+    });
+
+    if (usuarioExistente) {
+      return res.status(409).json({ error: "Username ou email já cadastrado." });
+    }
+
+    // Criar novo usuário
+    const novoUsuario = new User({
+      username,
+      email,
+      password: hashPassword(password)
+    });
+
+    await novoUsuario.save();
+
+    // Gerar token JWT
+    const token = jwt.sign(
+      { userId: novoUsuario._id, username: novoUsuario.username },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      message: "Usuário registrado com sucesso!",
+      token,
+      user: {
+        id: novoUsuario._id,
+        username: novoUsuario.username,
+        email: novoUsuario.email,
+        customSystemInstruction: novoUsuario.customSystemInstruction
+      }
+    });
+
+  } catch (error) {
+    console.error("Erro ao registrar usuário:", error.message);
+    res.status(500).json({ error: "Erro ao registrar usuário." });
+  }
+});
+
+// POST /api/auth/login - Fazer login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username e senha são obrigatórios." });
+    }
+
+    // Buscar usuário
+    const usuario = await User.findOne({ username });
+
+    if (!usuario) {
+      return res.status(401).json({ error: "Username ou senha inválidos." });
+    }
+
+    // Verificar senha
+    if (!verifyPassword(password, usuario.password)) {
+      return res.status(401).json({ error: "Username ou senha inválidos." });
+    }
+
+    // Atualizar lastLogin
+    usuario.lastLogin = new Date();
+    await usuario.save();
+
+    // Gerar token JWT
+    const token = jwt.sign(
+      { userId: usuario._id, username: usuario.username },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      message: "Login bem-sucedido!",
+      token,
+      user: {
+        id: usuario._id,
+        username: usuario.username,
+        email: usuario.email,
+        customSystemInstruction: usuario.customSystemInstruction
+      }
+    });
+
+  } catch (error) {
+    console.error("Erro ao fazer login:", error.message);
+    res.status(500).json({ error: "Erro ao fazer login." });
+  }
+});
+
+// ============================================================================
+// ENDPOINTS DE PREFERÊNCIAS DO USUÁRIO
+// ============================================================================
+
+// GET /api/user/preferences - Buscar preferências do usuário logado
+app.get('/api/user/preferences', authenticateToken, async (req, res) => {
+  try {
+    const usuario = await User.findById(req.userId);
+
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuário não encontrado." });
+    }
+
+    res.json({
+      customSystemInstruction: usuario.customSystemInstruction,
+      username: usuario.username,
+      email: usuario.email
+    });
+
+  } catch (error) {
+    console.error("Erro ao buscar preferências:", error.message);
+    res.status(500).json({ error: "Erro ao buscar preferências." });
+  }
+});
+
+// PUT /api/user/preferences - Atualizar preferências do usuário logado
+app.put('/api/user/preferences', authenticateToken, async (req, res) => {
+  try {
+    const { customSystemInstruction } = req.body;
+
+    if (!customSystemInstruction) {
+      return res.status(400).json({ error: "Campo customSystemInstruction é obrigatório." });
+    }
+
+    if (customSystemInstruction.length > 2000) {
+      return res.status(400).json({ error: "Instrução deve ter no máximo 2000 caracteres." });
+    }
+
+    const usuario = await User.findByIdAndUpdate(
+      req.userId,
+      { customSystemInstruction },
+      { new: true }
+    );
+
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuário não encontrado." });
+    }
+
+    console.log(`✨ Personalidade atualizada para ${usuario.username}`);
+
+    res.json({
+      message: "Personalidade salva com sucesso!",
+      customSystemInstruction: usuario.customSystemInstruction
+    });
+
+  } catch (error) {
+    console.error("Erro ao atualizar preferências:", error.message);
+    res.status(500).json({ error: "Erro ao atualizar preferências." });
+  }
+});
+
+// DELETE /api/user/preferences - Remover personalidade customizada
+app.delete('/api/user/preferences', authenticateToken, async (req, res) => {
+  try {
+    const usuario = await User.findByIdAndUpdate(
+      req.userId,
+      { customSystemInstruction: null },
+      { new: true }
+    );
+
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuário não encontrado." });
+    }
+
+    res.json({ message: "Personalidade removida. Usando personalidade global." });
+
+  } catch (error) {
+    console.error("Erro ao remover preferências:", error.message);
+    res.status(500).json({ error: "Erro ao remover preferências." });
   }
 });
 

@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurações de Personalidade - Chatbot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .config-wrapper {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .user-info {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .user-info p {
+            margin: 10px 0;
+            color: #333;
+        }
+
+        .user-info strong {
+            color: #667eea;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .form-group .help-text {
+            display: block;
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 8px;
+            font-style: italic;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 200px;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .char-count {
+            margin-top: 5px;
+            font-size: 0.85rem;
+            color: #999;
+            text-align: right;
+        }
+
+        .char-count.warning {
+            color: #ff9800;
+        }
+
+        .char-count.error {
+            color: #e74c3c;
+        }
+
+        .current-instruction {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 3px solid #4caf50;
+        }
+
+        .current-instruction h4 {
+            color: #4caf50;
+            margin-bottom: 10px;
+        }
+
+        .current-instruction p {
+            color: #555;
+            font-style: italic;
+            word-break: break-word;
+        }
+
+        .current-instruction.empty {
+            border-left-color: #999;
+            color: #999;
+            font-style: italic;
+        }
+
+        .current-instruction.empty h4 {
+            color: #999;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            min-width: 140px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #f5f5f5;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: white;
+            color: #e74c3c;
+            border: 2px solid #e74c3c;
+        }
+
+        .btn-danger:hover {
+            background: #fee;
+            transform: translateY(-2px);
+        }
+
+        .feedback {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        .feedback.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .feedback.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .feedback.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .feedback.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            border-left: 4px solid #2196f3;
+        }
+
+        .feedback strong {
+            font-weight: 600;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .nav-btn {
+            padding: 10px 20px;
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+        }
+
+        .nav-btn:hover {
+            background: #f5f5f5;
+            transform: translateY(-1px);
+        }
+
+        /* Responsivo */
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+
+        .auth-section {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .auth-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .auth-links {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .auth-links a {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .auth-links a:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="config-wrapper">
+            <div class="header">
+                <h1>⚙️ Configurações de Personalidade</h1>
+                <p>Customize a personalidade do seu bot de IA</p>
+            </div>
+
+            <div class="content">
+                <!-- Botões de navegação -->
+                <div class="nav-buttons">
+                    <a href="index.html" class="nav-btn">← Voltar ao Chat</a>
+                    <button class="nav-btn" onclick="fazerLogout()">Logout</button>
+                </div>
+
+                <!-- Seção de autenticação (mostrada se não logado) -->
+                <div id="auth-required" class="auth-section" style="display: none;">
+                    <h2>Autenticação Necessária</h2>
+                    <p style="margin-bottom: 20px; color: #666;">
+                        Você precisa estar logado para usar este recurso.
+                    </p>
+                    <div class="auth-links">
+                        <a href="login.html">Fazer Login</a>
+                        <a href="register.html">Criar Conta</a>
+                    </div>
+                </div>
+
+                <!-- Seção de configuração (mostrada se logado) -->
+                <div id="config-section" style="display: none;">
+                    <!-- Informações do usuário -->
+                    <div class="user-info">
+                        <p><strong>Usuário:</strong> <span id="username-display">Carregando...</span></p>
+                        <p><strong>Email:</strong> <span id="email-display">Carregando...</span></p>
+                    </div>
+
+                    <!-- Feedback -->
+                    <div id="feedback" class="feedback"></div>
+                    <div id="loading" class="loading"></div>
+
+                    <!-- Instrução atual -->
+                    <div id="current-instruction" class="current-instruction empty">
+                        <h4>📝 Instrução Atual</h4>
+                        <p>Nenhuma personalidade customizada. Usando a padrão do administrador.</p>
+                    </div>
+
+                    <!-- Formulário -->
+                    <form id="config-form" onsubmit="salvarPersonalidade(event)">
+                        <div class="form-group">
+                            <label for="instruction">Qual será a personalidade do seu bot?</label>
+                            <span class="help-text">
+                                Descreva em detalhes como você quer que seu bot se comporte.
+                                Exemplos: "Você é um chef de cozinha..." ou "Você é um tutor de matemática..."
+                            </span>
+                            <textarea 
+                                id="instruction"
+                                name="instruction"
+                                placeholder="Digite aqui a instrução de personalidade desejada para seu bot..."
+                                required
+                            ></textarea>
+                            <div class="char-count">
+                                <span id="char-count">0</span> / 2000 caracteres
+                            </div>
+                        </div>
+
+                        <div class="button-group">
+                            <button type="submit" class="btn btn-primary" id="save-btn">
+                                💾 Salvar Personalidade
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="limparFormulario()">
+                                🔄 Limpar
+                            </button>
+                            <button type="button" class="btn btn-danger" onclick="removerPersonalizacao()" id="remove-btn" style="display: none;">
+                                🗑️ Remover Personalização
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'https://chat-back-end-2.onrender.com';
+        
+        // Obter token do localStorage
+        function obterToken() {
+            return localStorage.getItem('authToken');
+        }
+
+        // Obter informações do usuário do localStorage
+        function obterUsuarioLocal() {
+            const userStr = localStorage.getItem('user');
+            return userStr ? JSON.parse(userStr) : null;
+        }
+
+        // Exibir feedback ao usuário
+        function exibirFeedback(mensagem, tipo = 'info') {
+            const feedbackEl = document.getElementById('feedback');
+            feedbackEl.textContent = mensagem;
+            feedbackEl.className = `feedback show ${tipo}`;
+            
+            if (tipo === 'success' || tipo === 'error') {
+                setTimeout(() => {
+                    feedbackEl.classList.remove('show');
+                }, 5000);
+            }
+        }
+
+        // Mostrar/esconder loading
+        function toggleLoading(mostrar = true) {
+            const loadingEl = document.getElementById('loading');
+            if (mostrar) {
+                loadingEl.classList.add('show');
+                loadingEl.textContent = 'Processando';
+            } else {
+                loadingEl.classList.remove('show');
+            }
+        }
+
+        // Atualizar contador de caracteres
+        document.getElementById('instruction').addEventListener('input', function() {
+            const count = this.value.length;
+            const countEl = document.getElementById('char-count');
+            countEl.textContent = count;
+
+            if (count > 1800) {
+                countEl.parentElement.classList.add('warning');
+            } else if (count > 2000) {
+                countEl.parentElement.classList.add('error');
+            } else {
+                countEl.parentElement.classList.remove('warning', 'error');
+            }
+        });
+
+        // Carregar preferências ao carregar a página
+        async function carregarPreferencias() {
+            const token = obterToken();
+            const usuario = obterUsuarioLocal();
+
+            if (!token || !usuario) {
+                document.getElementById('auth-required').style.display = 'block';
+                document.getElementById('config-section').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('config-section').style.display = 'block';
+            document.getElementById('auth-required').style.display = 'none';
+
+            // Mostrar informações do usuário
+            document.getElementById('username-display').textContent = usuario.username;
+            document.getElementById('email-display').textContent = usuario.email;
+
+            try {
+                toggleLoading(true);
+
+                const response = await fetch(`${BACKEND_URL}/api/user/preferences`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        localStorage.removeItem('authToken');
+                        localStorage.removeItem('user');
+                        location.reload();
+                        return;
+                    }
+                    throw new Error('Erro ao carregar preferências');
+                }
+
+                const data = await response.json();
+
+                if (data.customSystemInstruction) {
+                    document.getElementById('instruction').value = data.customSystemInstruction;
+                    document.getElementById('char-count').textContent = data.customSystemInstruction.length;
+
+                    // Mostrar instrução atual
+                    const currentInstructionEl = document.getElementById('current-instruction');
+                    currentInstructionEl.classList.remove('empty');
+                    currentInstructionEl.innerHTML = `
+                        <h4>📝 Sua Instrução Atual</h4>
+                        <p>${escapeHtml(data.customSystemInstruction)}</p>
+                    `;
+
+                    document.getElementById('remove-btn').style.display = 'inline-block';
+                } else {
+                    document.getElementById('remove-btn').style.display = 'none';
+                }
+
+                toggleLoading(false);
+
+            } catch (error) {
+                console.error('Erro ao carregar preferências:', error);
+                exibirFeedback('Erro ao carregar suas preferências', 'error');
+                toggleLoading(false);
+            }
+        }
+
+        // Salvar personalidade
+        async function salvarPersonalidade(event) {
+            event.preventDefault();
+
+            const token = obterToken();
+            if (!token) {
+                exibirFeedback('Você precisa estar logado', 'error');
+                return;
+            }
+
+            const instrucao = document.getElementById('instruction').value.trim();
+
+            if (!instrucao) {
+                exibirFeedback('Por favor, digite uma instrução', 'error');
+                return;
+            }
+
+            if (instrucao.length > 2000) {
+                exibirFeedback('Instrução excede o limite de 2000 caracteres', 'error');
+                return;
+            }
+
+            try {
+                toggleLoading(true);
+
+                const response = await fetch(`${BACKEND_URL}/api/user/preferences`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ customSystemInstruction: instrucao })
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        localStorage.removeItem('authToken');
+                        localStorage.removeItem('user');
+                        location.reload();
+                        return;
+                    }
+                    const error = await response.json();
+                    throw new Error(error.error || 'Erro ao salvar');
+                }
+
+                const data = await response.json();
+
+                exibirFeedback('✅ Personalidade salva com sucesso!', 'success');
+
+                // Atualizar exibição da instrução atual
+                const currentInstructionEl = document.getElementById('current-instruction');
+                currentInstructionEl.classList.remove('empty');
+                currentInstructionEl.innerHTML = `
+                    <h4>📝 Sua Instrução Atual</h4>
+                    <p>${escapeHtml(instrucao)}</p>
+                `;
+
+                document.getElementById('remove-btn').style.display = 'inline-block';
+
+                toggleLoading(false);
+
+            } catch (error) {
+                console.error('Erro ao salvar personalidade:', error);
+                exibirFeedback(`Erro: ${error.message}`, 'error');
+                toggleLoading(false);
+            }
+        }
+
+        // Limpar formulário
+        function limparFormulario() {
+            document.getElementById('config-form').reset();
+            document.getElementById('char-count').textContent = '0';
+            document.getElementById('feedback').classList.remove('show');
+        }
+
+        // Remover personalização
+        async function removerPersonalizacao() {
+            if (!confirm('Tem certeza que deseja remover sua personalização? O bot voltará a usar a personalidade padrão.')) {
+                return;
+            }
+
+            const token = obterToken();
+            if (!token) {
+                exibirFeedback('Você precisa estar logado', 'error');
+                return;
+            }
+
+            try {
+                toggleLoading(true);
+
+                const response = await fetch(`${BACKEND_URL}/api/user/preferences`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao remover personalização');
+                }
+
+                exibirFeedback('✅ Personalização removida!', 'success');
+
+                // Limpar formulário
+                document.getElementById('instruction').value = '';
+                document.getElementById('char-count').textContent = '0';
+
+                // Resetar exibição
+                const currentInstructionEl = document.getElementById('current-instruction');
+                currentInstructionEl.classList.add('empty');
+                currentInstructionEl.innerHTML = `
+                    <h4>📝 Instrução Atual</h4>
+                    <p>Nenhuma personalidade customizada. Usando a padrão do administrador.</p>
+                `;
+
+                document.getElementById('remove-btn').style.display = 'none';
+
+                toggleLoading(false);
+
+            } catch (error) {
+                console.error('Erro ao remover personalização:', error);
+                exibirFeedback('Erro ao remover personalização', 'error');
+                toggleLoading(false);
+            }
+        }
+
+        // Fazer logout
+        function fazerLogout() {
+            if (confirm('Tem certeza que deseja fazer logout?')) {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('user');
+                window.location.href = 'login.html';
+            }
+        }
+
+        // Escapar HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Inicializar ao carregar a página
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Página de configurações carregando...');
+            carregarPreferencias();
+        });
+    </script>
+</body>
+</html>
