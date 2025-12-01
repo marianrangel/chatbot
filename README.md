@@ -1,70 +1,97 @@
-# Getting Started with Create React App
+<!--
+	Polished README for Demo Day / Portfolio
+	Replace placeholders in brackets [..] with project-specific links and texts.
+-->
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+# ChatBot de Autocuidado — Conversa que cuida
 
-## Available Scripts
+Slogan: Um chatbot personalizável que aprende seu contexto e protege suas conversas.
 
-In the project directory, you can run:
+Descrição
+---
+Este projeto é um chatbot full‑stack criado como parte do curso — com autenticação, memória por usuário, painel de administração e opções para personalizar personalidade e tom. O objetivo deste repositório é servir como um ativo de portfólio: código limpo, documentação e uma demo interativa.
 
-### `npm start`
+Demo Visual
+---
+- GIF de demonstração: `assets/demo.gif` (substitua pelo GIF gravado mostrando: login → conversa → personalização)
+- Demo online (frontend): [COLE_AQUI_O_LINK_DA_FRONTEND]  
+- API (backend): [COLE_AQUI_O_LINK_DA_BACKEND]
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Principais funcionalidades
+---
+- Autenticação segura (armazenamento de token + hashing no backend)
+- Personalização por usuário (persona, tom, preferências)
+- Memória de conversa por sessão com endpoint de persistência
+- Geração de títulos de conversa e gerenciamento de históricos
+- Painel de admin com métricas básicas (usuários, conversas, erros)
+- Proteções básicas: validação de entrada, mensagens de erro amigáveis
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Tech Stack
+---
+- Frontend: React (Create React App)
+- Backend: Node.js + Express
+- Banco de dados: MongoDB (ou outra implementação baseada em JSON)
+- LLM: integração via API (ex: Gemini / OpenAI) gerenciada pelo backend
+- Deploy: Vercel, Render ou Heroku (substitua conforme aplicável)
 
-### `npm test`
+Como rodar localmente (Windows)
+---
+1. Clone o repositório e entre na pasta principal:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```powershell
+cd "c:\Users\aluno2025\Downloads\chatbot-main (3)\chatbot-main"
+```
 
-### `npm run build`
+2. Backend (abra um terminal):
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```powershell
+cd backend
+npm install
+# defina variáveis de ambiente: DATABASE_URL, API_KEY, etc.
+npm start
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+3. Frontend (outro terminal):
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```powershell
+cd frontend
+npm install
+npm start
+```
 
-### `npm run eject`
+Nota rápida: o `login.html` em `/public` faz POST para o backend (ver `BACKEND_URL`), ajuste se estiver rodando localmente.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+QA Rápido (smoke tests)
+---
+- Registrar um novo usuário e efetuar login
+- Enviar mensagem vazia — UI deve impedir
+- Verificar que a personalização afeta respostas
+- Confirmar que o histórico é salvo (ver endpoint `/api/chat/historicos`)
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Estrutura do repositório
+---
+- `/frontend` — código React (UI)
+- `/backend` — API (auth, chat, integrações com LLM)
+- `/public` — páginas estáticas (login, registro, configuracoes)
+- `/assets` — imagens e GIFs para README e demo
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Como contribuir
+---
+- Abra uma issue para bugs/UX e solicite permissões para PRs.
+- Para PRs: descreva a mudança, inclua screenshots/GIFs e adicione testes básicos quando possível.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Pitch & Demo
+---
+Veja `docs/PITCH.md` para roteiro de apresentação, tempo sugerido e instruções para gravação do GIF de demonstração.
 
-## Learn More
+Licença
+---
+MIT — ajuste conforme necessário.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Contato
+---
+- Autor: [SEU NOME]
+- Email: [SEU EMAIL]
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+---
+Substitua os placeholders entre colchetes antes de publicar no GitHub.
